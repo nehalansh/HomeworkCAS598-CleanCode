@@ -1,0 +1,105 @@
+clear;clc;
+
+n = 0.015;
+s0 = 0.006;
+L = 8000;%[ft]
+B = 100;%[ft]
+P = B;
+beta = 0.6;
+alpha = (n*P^(2/3)/1.49/sqrt(s0))^beta;
+dx = 1000;%[ft]2000
+N_cell = L/dx;%number of spatial cells
+
+T_sim = 120;%[min] total simultion time
+dt = 1;%[min] !!may need to convert to [second]!! try 0.5,3,6,12
+nT = T_sim/dt;%number of time steps
+
+%create variable to store Q
+Q_l = zeros(nT+1,N_cell+1);%including intial time step
+%assign initial condition
+Q_l(1,:) = 2000;%[cfs]
+%create boundary condition
+T_initial = 0:1:T_sim;
+n_initial = (0:1:T_sim)/dt+1;
+
+Q_bc = 2000 + (6000/2)*(1 - cos(2*pi*T_initial/T_sim));
+
+Q_DUM = [500,1402,9291,11576,10332,5458,2498,825,569];
+
+% Q_bc = ones(nT+1,1)*Q_DUM(1);
+% Q_bc(1:T_initial(2)/dt,1) = Q_DUM(1);
+% 
+% for ind = 2: length(T_initial)-1
+%     Q_bc(floor(T_initial(ind):dt:T_initial(ind+1))/dt+1,1) = linspace(Q_DUM((ind)),Q_DUM((ind+1)),(T_initial(ind+1)-T_initial(ind))/dt+1)';
+% end
+
+%assgin boundary and inital condition
+Q_l(:,1) = Q_bc;%[cfs]
+Q_n = Q_l;%[cfs]
+
+%linear scheme
+%time loop
+for it = 2:nT+1
+    %space loop
+    for ix = 2:N_cell+1
+        numerator = dt*60/dx*Q_l(it,ix-1)+alpha*beta*Q_l(it-1,ix)*(Q_l(it-1,ix)/2+Q_l(it,ix-1)/2)^(0.6-1);
+        denominator = dt*60/dx + alpha*beta*(Q_l(it-1,ix)/2+Q_l(it,ix-1)/2)^(beta-1);
+        Q_l(it,ix) = numerator/denominator;
+    end
+end
+%
+%nonlinear scheme
+options = optimset('TolX',10^-6);%set up the stop criteria for nonlinear solver
+%time loop
+for it = 2:nT+1
+    %space loop
+    for ix = 2:N_cell+1
+        c = Q_n(it,ix-1);
+        d = Q_n(it-1,ix);
+        f = @(x)dt*60/dx*x + alpha*x^beta - dt*60/dx*c - alpha*d^beta;
+        x_in = Q_l(it,ix);%use linear solution as inital guess
+        Q_n(it,ix) = fzero(f,x_in,options);
+    end
+end
+
+%plot Q at different location
+figure
+ylim([0 8100]);
+plot(0:dt:T_sim,Q_l(:,1),'r-');hold on
+plot(0:dt:T_sim,Q_l(:,2:end),'r-');
+xlabel('Time (mins)');
+ylabel('Q (cfs)');
+%plot nonlinear solution
+% figure
+ylim([0 8100]);
+plot(0:dt:T_sim,Q_n(:,1),'b-');hold on
+plot(0:dt:T_sim,Q_n(:,2:end),'b-');
+xlabel('Time (mins)');
+ylabel('Q (cfs)');
+exportgraphics(gcf,'Fig8.jpg')
+%%
+%plot discharge along river at different time
+figure(2)
+ylim([0 8100]);
+t_plot = 0:20:120; % [0,30,60,90,120];
+for it = 1:length(t_plot)
+    plot(0:dx:L,Q_n(t_plot(it)/dt+1,:));hold on
+    pause(0.2)
+end
+xlabel('Distance (ft)');
+ylabel('Q(cfs)');
+legend({'t=0 min','20','40','60','80','100','120'});
+exportgraphics(gcf,'Fig9.jpg')
+
+%%
+%animation of flood wave moving along river
+figure(3)
+ylim([0 8100]);
+for it = 1:length(Q_n)
+    plot(0:dx:L,Q_l(it,:));%plot(0:dx:L,Q_nonlinear(it,:));
+    ylim([0 8100]);
+    xlabel('Distance (ft)');ylabel('Q(cfs)');
+    pause(0.1);
+end
+
+
